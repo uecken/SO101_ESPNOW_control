@@ -1,5 +1,7 @@
 # SO-101 Leader-Follower (ESP-NOW)
 
+![SO-101 ESP-NOW Standalone](image/SO101_ESPNOW_Standalone.png)
+
 ESP-NOW 経由で SO-101 ロボットアームの Leader-Follower テレオペを行うファームウェア。
 WiFi AP 不要の直接 peer-to-peer 通信で、WiFi UDP 版 (SO101_wifi_ap_control) より低遅延。
 
