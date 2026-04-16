@@ -23,6 +23,7 @@
 #include <WiFi.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
+#include <Preferences.h>
 
 // ---- State variables ----
 static int8_t cur_phy_rate_idx = -1;
@@ -149,15 +150,58 @@ static inline void wifi_show_config() {
                   !!(proto & WIFI_PROTOCOL_11N));
 }
 
+// ---- NVS persistence for WiFi config ----
+// Namespace "wificfg" (separate from app's "wifictl" to avoid key conflicts)
+
+static inline void wifi_nvs_save() {
+    Preferences p;
+    p.begin("wificfg", false);
+    p.putChar("phy_rate", cur_phy_rate_idx);
+    p.putChar("channel", cur_wifi_ch);
+    p.putChar("protocol", cur_protocol);
+    p.end();
+}
+
+static inline void wifi_nvs_load() {
+    Preferences p;
+    p.begin("wificfg", true);
+    if (p.isKey("phy_rate")) {
+        cur_phy_rate_idx = p.getChar("phy_rate", 3);
+        cur_wifi_ch      = p.getChar("channel", -1);
+        cur_protocol     = p.getChar("protocol", WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G);
+    }
+    p.end();
+}
+
 // ---- Default setup (call after WiFi.mode + esp_now_init) ----
+// Loads NVS if available, otherwise uses hardcoded defaults.
 
 static inline void wifi_apply_defaults() {
+    // Hardcoded defaults
+    int8_t phy  = 3;   // 11M_L
+    int8_t ch   = -1;  // auto
+    int8_t proto = WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G;
+
+    // Override from NVS if saved
+    wifi_nvs_load();
+    if (cur_phy_rate_idx >= 0) phy   = cur_phy_rate_idx;
+    if (cur_wifi_ch >= 1)      ch    = cur_wifi_ch;
+    if (cur_protocol >= 0)     proto = cur_protocol;
+
     esp_wifi_set_ps(WIFI_PS_NONE);
-    esp_wifi_config_espnow_rate(WIFI_IF_STA, WIFI_PHY_RATE_11M_L);
-    esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G);
-    cur_phy_rate_idx = 3;  // 11M_L
-    cur_ps_mode = 0;       // NONE
-    cur_protocol = WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G;
+    cur_ps_mode = 0;
+
+    if (phy >= 0 && phy < PHY_RATE_TABLE_LEN) {
+        esp_wifi_config_espnow_rate(WIFI_IF_STA, PHY_RATE_TABLE[phy].rate);
+        cur_phy_rate_idx = phy;
+    }
+    esp_wifi_set_protocol(WIFI_IF_STA, (uint8_t)proto);
+    cur_protocol = proto;
+
+    if (ch >= 1 && ch <= 13) {
+        esp_wifi_set_channel((uint8_t)ch, WIFI_SECOND_CHAN_NONE);
+        cur_wifi_ch = ch;
+    }
 }
 
 // ---- Print help for WiFi commands ----
@@ -181,6 +225,7 @@ static inline bool wifi_handle_command(const char *cmd) {
     case 'R': {
         int idx = atoi(cmd + 1);
         if (!wifi_set_phy_rate(idx)) Serial.printf("ERR: rate idx %d invalid\n", idx);
+        else { wifi_nvs_save(); Serial.println("(saved)"); }
         return true;
     }
     case 'A': {
@@ -188,11 +233,13 @@ static inline bool wifi_handle_command(const char *cmd) {
         uint8_t mask = WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G;
         if (on) mask |= WIFI_PROTOCOL_11N;
         wifi_set_protocol_mask(mask);
+        wifi_nvs_save(); Serial.println("(saved)");
         return true;
     }
     case 'C': {
         int ch = atoi(cmd + 1);
         if (!wifi_set_channel_n(ch)) Serial.printf("ERR: channel %d invalid (1..13)\n", ch);
+        else { wifi_nvs_save(); Serial.println("(saved)"); }
         return true;
     }
     case 'P': {
