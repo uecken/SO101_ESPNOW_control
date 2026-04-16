@@ -19,6 +19,42 @@ Leader MCU ──UART 1Mbaud──> STS3215 x6 (READ)
 
 WiFi AP は不要。ESP-NOW は broadcast (FF:FF:FF:FF:FF:FF) で自動接続。
 
+## ハードウェア構成
+
+### MCU (teleop 用) — 以下のいずれか
+
+Leader/Follower 各 1 台で計 2 台必要。同じ MCU でも、異種混在でも可。
+
+| パーツ | リンク |
+|-------|-------|
+| M5StickC (ESP32-PICO) | [M5Stack 公式](https://shop.m5stack.com/products/stick-c) |
+| M5Stack AtomS3 | [M5Stack 公式](https://shop.m5stack.com/products/atoms3-dev-kit-w-0-85-inch-screen) |
+| XIAO ESP32-C3 | [Seeed Studio 公式](https://www.seeedstudio.com/Seeed-XIAO-ESP32C3-p-5431.html) |
+
+### サーボバスドライバ基板 (MCU / PC 共通のサーボ接続ハブ)
+
+![XIAO ESP32-C3 on Waveshare UART Serial Driver](image/XIAO-ESP32C3_on_waveshare-UART-Serial-Driver.png)
+
+| パーツ | リンク |
+|-------|-------|
+| **Waveshare シリアルバスサーボドライバ** | [秋月電子 M-17068](https://akizukidenshi.com/catalog/g/g131227/) |
+
+MCU (XIAO / AtomS3 等) を差し込んで使う **物理プラットフォーム**:
+- サーボ connector × 複数 (STS3215 デイジーチェーン対応)
+- 5V / 7.4V 電源分配
+- 半二重 UART の RX/TX 合流配線
+- USB-UART ブリッジも内蔵 (PC 直結も可)
+
+teleop 時は MCU が Waveshare に乗って駆動。**キャリブレーション (`so101_calibrate.py`) 実行時は現状、Waveshare 本体の USB ポートに PC を直接接続する必要がある** (MCU 経由の透過モードは未対応)。
+
+### ロボットアーム
+
+| パーツ | リンク |
+|-------|-------|
+| **SO-ARM100 / SO-101** (3D print + BOM) | [TheRobotStudio/SO-ARM100](https://github.com/TheRobotStudio/SO-ARM100) |
+| STS3215 サーボ (Feetech) | [Feetech 公式](http://www.feetechrc.com/) |
+| LeRobot (学習フレームワーク) | [huggingface/lerobot](https://github.com/huggingface/lerobot) -- **模倣学習は対応検討中** |
+
 ## 対応ボード
 
 | env | MCU | サーボ TX/RX | 備考 |
@@ -26,6 +62,20 @@ WiFi AP は不要。ESP-NOW は broadcast (FF:FF:FF:FF:FF:FF) で自動接続。
 | `m5stick-c` | M5StickC (ESP32) | GPIO32 / GPIO33 | UART2 (bridge 用): GPIO26 / GPIO36 |
 | `m5stack-atoms3` | M5Stack AtomS3 (ESP32-S3) | GPIO2 / GPIO1 | USB-CDC |
 | `xiao-esp32c3-scs-recognize` | XIAO ESP32-C3 | GPIO21 / GPIO20 | シングルコア、ESP-NOW 50Hz で動作確認済 |
+| `xiao-esp32c6` | XIAO ESP32-C6 | GPIO16 / GPIO17 | **未検証** (Arduino v3/pioarduino 必要) |
+
+## 開発環境
+
+| 項目 | バージョン / 内容 |
+|------|----------------|
+| **ビルドシステム** | [PlatformIO](https://platformio.org/) |
+| **フレームワーク** | **Arduino framework v2** (ESP-IDF 4.4 ベース) |
+| **Platform** | `espressif32@6.9.0` |
+| UART driver | ESP-IDF `driver/uart.h` (Arduino `Serial` ではなく直接使用、1Mbaud 安定化のため) |
+| WiFi stack | ESP-NOW (`esp_now.h`) broadcast, AP 不要 |
+| NVS | Arduino `Preferences` (ESP-IDF NVS ラッパ) |
+
+ESP32-C6 は **未検証**。Arduino v3 (pioarduino) が必要 (ESP-IDF 4.4 で C6 サポートなし)。env 定義は [platformio.ini](platformio.ini) に用意済だが実機動作未確認。
 
 ## ビルド・アップロード
 
@@ -184,3 +234,7 @@ PC からの設定・テストスクリプトは [python/](python/) を参照。
 ## 関連プロジェクト
 
 - [RS-485_wireless](https://github.com/uecken/RS-485_wireless) -- 元リポジトリ (WiFi UDP 版、RS-485 bridge 等)
+
+## License
+
+[MIT License](LICENSE)

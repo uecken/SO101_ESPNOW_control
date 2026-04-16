@@ -9,7 +9,7 @@ FW 側の使い方は [../README.md](../README.md) を参照。
 | スクリプト | 用途 |
 |-----------|------|
 | `so101_setup.py` | NVS 設定 (Leader/Follower モード、軸数、ID、制御周期) |
-| `so101_calibrate.py` | STS3215 キャリブレーション (LeRobot 互換、サーボ直結) |
+| `so101_calibrate.py` | STS3215 キャリブレーション (LeRobot 互換、PC から SCS 直接生成) |
 | `so101_leader_follower_test.py` | ESP-NOW Leader-Follower 追従精度テスト (メイン) |
 
 ### old/ (旧アーキテクチャ用、参考保管)
@@ -77,7 +77,7 @@ python so101_calibrate.py --port COM24 --read-only
 python so101_calibrate.py --port COM24 --reset
 ```
 
-**注意**: キャリブレーションは USB-UART アダプタ (1Mbaud) でサーボに直結して実行。M5StickC 経由ではない。
+**注意**: 現状、**Waveshare サーボドライバの USB ポートに PC を直接接続** して実行する必要がある (MCU 経由の透過モードは未対応)。
 
 ### 2b. WiFi / ESP-NOW 設定 (NVS 保存)
 
