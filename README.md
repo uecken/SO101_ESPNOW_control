@@ -7,6 +7,42 @@ WiFi AP 不要の直接 peer-to-peer 通信で、WiFi UDP 版 (SO101_wifi_ap_con
 
 **デモ動画**: [Twitter / X @robostadion](https://x.com/robostadion/status/2043876691672793417)
 
+---
+
+## ⚡ シンプルな検証方法 (PlatformIO / Python 不要、ブラウザのみ)
+
+**Chrome / Edge デスクトップ版**があれば、PlatformIO も Python も git clone も不要で teleop まで到達できます。必要なもの: 2 台の MCU (Leader/Follower 各 1)、SO-101 腕 2 体、USB ケーブル。
+
+### Step 1. 書込み
+
+> ### 🌐 [https://uecken.github.io/SO101_ESPNOW_control/](https://uecken.github.io/SO101_ESPNOW_control/)
+
+上記 URL をブラウザで開き、該当 MCU (M5StickC / AtomS3 / XIAO ESP32-C3 / XIAO ESP32-S3) を USB 接続して「書込む」ボタンを押す → シリアルポート選択 → 自動書込み完了。
+
+### Step 2. Leader / Follower 設定 (同じページで続行)
+
+書込み後、ページ下部の **「書込み後の初回設定」** セクションで:
+
+1. **「① シリアル接続 (115200)」** ボタン → 対象の COM port を選択
+2. 1 台目 (Leader 用 MCU) は **「② Leader 設定 + 開始」** クリック
+3. 2 台目 (Follower 用 MCU) を USB に挿しなおして同じ手順で **「② Follower 設定 + 開始」** クリック
+
+ブラウザから `x` → `m0`/`m1` → `s` の 3 コマンドが自動送信され、`state=RUNNING` に到達します。シリアル出力はその場で表示されるので成功が目視できます。
+
+### Step 3. teleop 動作
+
+両機 RUNNING 状態で Leader 腕を動かすと Follower 腕が 1:1 で追従。
+
+### なぜ Web Serial?
+
+- Web Serial API (Chrome/Edge) が USB シリアル通信を標準化
+- Python + pyserial と同じことをブラウザだけでできる
+- 設定は **NVS に永続化** されるため、次回以降は電源 ON のみで自動起動
+
+Python でやりたい場合 (スクリプト化したい開発者向け) は [#初回設定](#初回設定-書込み後-device-毎に-1-回) 参照。
+
+---
+
 ## 構成
 
 ```

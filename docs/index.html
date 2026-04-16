@@ -76,10 +76,39 @@
     </article>
   </section>
 
-  <section class="next-steps">
+  <section class="next-steps" id="configure">
     <h2>書込み後の初回設定 (device 毎に 1 回)</h2>
-    <p>Leader と Follower それぞれに役割を設定 + 開始:</p>
-    <pre><code>git clone https://github.com/uecken/SO101_ESPNOW_control
+    <p>
+      書込み後、<strong>このブラウザからそのままシリアル接続</strong>して
+      Leader / Follower 役割を設定できます (PlatformIO や Python 不要)。
+    </p>
+
+    <div class="serial-terminal">
+      <div class="serial-controls">
+        <button id="btn-connect" class="install-btn">① シリアル接続 (115200)</button>
+        <button id="btn-leader"   class="install-btn secondary" disabled>② Leader 設定 + 開始</button>
+        <button id="btn-follower" class="install-btn secondary" disabled>② Follower 設定 + 開始</button>
+        <button id="btn-status"   class="install-btn secondary" disabled>状態確認 (?)</button>
+        <button id="btn-disconnect" class="install-btn danger"  disabled>切断</button>
+      </div>
+
+      <div class="serial-input-row">
+        <input type="text" id="cmd-input" placeholder="任意コマンド (例: m0, s, x, h, ?)" disabled>
+        <button id="btn-send" class="install-btn" disabled>送信</button>
+      </div>
+
+      <pre id="serial-output" class="serial-output">書込み完了後、①「シリアル接続」を押して該当 COM port を選んでください。
+</pre>
+    </div>
+
+    <p>
+      モード・サーボ ID・WiFi 設定等は <strong>NVS 永続化</strong>されるため、次回以降は
+      電源 ON のみで自動 <code>RUNNING</code> 復帰します (上記設定は書込み後 1 回だけ)。
+    </p>
+
+    <details>
+      <summary>PlatformIO / Python でやりたい場合 (開発者向け)</summary>
+      <pre><code>git clone https://github.com/uecken/SO101_ESPNOW_control
 cd SO101_ESPNOW_control
 pip install pyserial
 
@@ -88,15 +117,130 @@ python python/so101_setup.py --port COMxx --leader --start
 
 # Follower
 python python/so101_setup.py --port COMyy --follower --start</code></pre>
-    <p>
-      モード・サーボ ID・WiFi 設定等は <strong>NVS 永続化</strong>されるため、次回以降は
-      電源 ON のみで自動 <code>RUNNING</code> 復帰します (上記コマンドは書込み後 1 回だけ)。
-    </p>
-    <p>
-      サーボのキャリブレーションは別途 <code>python/so101_calibrate.py --reset --port COMxx</code>。
-      詳細は <a href="https://github.com/uecken/SO101_ESPNOW_control#readme">README</a> 参照。
-    </p>
+      <p>
+        サーボのキャリブレーションは別途 <code>python/so101_calibrate.py --reset --port COMxx</code>。
+        詳細は <a href="https://github.com/uecken/SO101_ESPNOW_control#readme">README</a> 参照。
+      </p>
+    </details>
   </section>
+
+  <script>
+    // Minimal Web Serial terminal tailored to SO101_leader_follower FW.
+    // Presets send the same sequence as `so101_setup.py --leader --start`.
+    (() => {
+      const btnConnect    = document.getElementById('btn-connect');
+      const btnLeader     = document.getElementById('btn-leader');
+      const btnFollower   = document.getElementById('btn-follower');
+      const btnStatus     = document.getElementById('btn-status');
+      const btnDisconnect = document.getElementById('btn-disconnect');
+      const btnSend       = document.getElementById('btn-send');
+      const cmdInput      = document.getElementById('cmd-input');
+      const output        = document.getElementById('serial-output');
+
+      let port = null;
+      let reader = null;
+      let writer = null;
+      let readLoopPromise = null;
+
+      if (!('serial' in navigator)) {
+        btnConnect.disabled = true;
+        btnConnect.textContent = '⚠ Web Serial 非対応ブラウザ';
+        return;
+      }
+
+      function log(text, cls) {
+        const span = document.createElement('span');
+        if (cls) span.className = cls;
+        span.textContent = text;
+        output.appendChild(span);
+        output.scrollTop = output.scrollHeight;
+      }
+
+      async function sendRaw(str) {
+        if (!writer) return;
+        const encoder = new TextEncoder();
+        await writer.write(encoder.encode(str));
+      }
+
+      async function sendLine(cmd) {
+        log('> ' + cmd + '\n', 'sent');
+        await sendRaw(cmd + '\r\n');
+      }
+
+      async function sendSequence(cmds, gapMs = 600) {
+        for (const c of cmds) {
+          await sendLine(c);
+          await new Promise(r => setTimeout(r, gapMs));
+        }
+      }
+
+      async function readLoop() {
+        const decoder = new TextDecoder();
+        try {
+          while (port && port.readable) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            if (value) log(decoder.decode(value));
+          }
+        } catch (err) {
+          log('\n[read error: ' + err.message + ']\n', 'err');
+        }
+      }
+
+      function setConnectedUI(connected) {
+        btnConnect.disabled    = connected;
+        btnLeader.disabled     = !connected;
+        btnFollower.disabled   = !connected;
+        btnStatus.disabled     = !connected;
+        btnDisconnect.disabled = !connected;
+        btnSend.disabled       = !connected;
+        cmdInput.disabled      = !connected;
+      }
+
+      btnConnect.addEventListener('click', async () => {
+        try {
+          port = await navigator.serial.requestPort();
+          await port.open({ baudRate: 115200 });
+          writer = port.writable.getWriter();
+          reader = port.readable.getReader();
+          setConnectedUI(true);
+          log('[connected @115200]\n', 'ok');
+          // Trigger a status dump so the user sees the device is alive.
+          readLoopPromise = readLoop();
+          setTimeout(() => sendLine('?'), 200);
+        } catch (err) {
+          log('[connect error: ' + err.message + ']\n', 'err');
+        }
+      });
+
+      btnLeader.addEventListener('click', () => sendSequence(['x', 'm0', 's']));
+      btnFollower.addEventListener('click', () => sendSequence(['x', 'm1', 's']));
+      btnStatus.addEventListener('click', () => sendLine('?'));
+
+      btnSend.addEventListener('click', async () => {
+        const cmd = cmdInput.value.trim();
+        if (cmd) {
+          await sendLine(cmd);
+          cmdInput.value = '';
+        }
+      });
+      cmdInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter') btnSend.click();
+      });
+
+      btnDisconnect.addEventListener('click', async () => {
+        try {
+          if (reader) { await reader.cancel(); reader.releaseLock(); reader = null; }
+          if (writer) { writer.releaseLock(); writer = null; }
+          if (port)   { await port.close(); port = null; }
+          setConnectedUI(false);
+          log('[disconnected]\n', 'ok');
+        } catch (err) {
+          log('[disconnect error: ' + err.message + ']\n', 'err');
+        }
+      });
+    })();
+  </script>
 
   <section class="links">
     <h2>リンク</h2>

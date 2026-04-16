@@ -160,3 +160,64 @@ footer {
 
 a { color: var(--primary); }
 a:hover { color: var(--primary-hover); }
+
+/* --- Web Serial terminal (post-install configure UI) --- */
+.serial-terminal {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: 1rem;
+  margin: 1rem 0;
+}
+.serial-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+.serial-input-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+.serial-input-row input {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.9rem;
+  border: 1px solid var(--card-border);
+  border-radius: 4px;
+}
+.serial-input-row input:disabled { background: #e2e8f0; }
+.install-btn.secondary {
+  background: #64748b;
+}
+.install-btn.secondary:hover:not(:disabled) { background: #475569; }
+.install-btn.danger {
+  background: #dc2626;
+}
+.install-btn.danger:hover:not(:disabled) { background: #b91c1c; }
+.serial-output {
+  background: #0f172a;
+  color: #cbd5e1;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  min-height: 180px;
+  max-height: 320px;
+  overflow-y: auto;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.serial-output .sent { color: #93c5fd; font-weight: 600; }
+.serial-output .ok   { color: #86efac; }
+.serial-output .err  { color: #fca5a5; }
+
+details summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  padding: 0.5rem 0;
+}
+details[open] summary { color: var(--text); margin-bottom: 0.5rem; }
