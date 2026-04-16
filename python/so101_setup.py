@@ -47,12 +47,13 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python so101_setup.py --port COM28 --leader      # Leader に設定
-  python so101_setup.py --port COM29 --follower     # Follower に設定
-  python so101_setup.py --port COM28 --status       # ステータス確認
-  python so101_setup.py --port COM28 --cmd "m0"     # 任意コマンド送信
-  python so101_setup.py --port COM28 --start        # 開始 (s コマンド)
-  python so101_setup.py --port COM28 --stop         # 停止 (x コマンド)
+  python so101_setup.py --port COM28 --leader             # Leader に設定 (STOPPED のまま)
+  python so101_setup.py --port COM28 --leader --start     # Leader に設定 + teleop 開始 (x→m0→s)
+  python so101_setup.py --port COM29 --follower --start   # Follower 設定 + 開始
+  python so101_setup.py --port COM28 --status             # ステータス確認
+  python so101_setup.py --port COM28 --cmd "m0"           # 任意コマンド送信
+  python so101_setup.py --port COM28 --start              # 開始 (s コマンド単体)
+  python so101_setup.py --port COM28 --stop               # 停止 (x コマンド単体)
 
   # WiFi / ESP-NOW 設定 (NVS 保存、Leader/Follower で一致必須)
   python so101_setup.py --port COM28 --wifi-channel 6
@@ -144,12 +145,23 @@ Examples:
             print(r)
             return 0
 
-        if args.stop:
+        # --stop / --start standalone: only short-circuit when they are the
+        # ONLY action requested. If combined with config flags (--leader,
+        # --follower, --mode, --axes, --ids, --period, --wifi-*) they act
+        # as prefix/suffix to the config sequence and are handled below.
+        only_action = lambda flag: flag and not (
+            args.leader or args.follower or args.mode is not None
+            or args.axes or args.ids or args.period
+            or args.wifi_channel is not None or args.wifi_phy is not None
+            or args.wifi_ampdu is not None or args.wifi_power is not None
+            or args.wifi_show)
+
+        if only_action(args.stop):
             r = send_cmd(ser, "x", 0.5)
             print(r)
             return 0
 
-        if args.start:
+        if only_action(args.start):
             r = send_cmd(ser, "s", 3.0)
             print(r)
             return 0
@@ -222,12 +234,21 @@ Examples:
         if args.period:
             cmds.append(("G%d" % args.period, "Period=%dus" % args.period))
 
+        # Optional --start suffix: after config, transition to RUNNING.
+        # Example: `--leader --start` produces x -> m0 -> s in one pass.
+        if args.start and need_config:
+            cmds.append(("s", "Start"))
+
         if not cmds and not args.status:
             parser.print_help()
             return 1
 
         for cmd, desc in cmds:
-            r = send_cmd(ser, cmd, 0.5)
+            # Give the 's' command more time: the Scanning state polls servos
+            # on the bus and only transitions to RUNNING after a successful
+            # scan (can take 1-3 s on a cold bus).
+            wait = 3.0 if cmd == "s" else 0.5
+            r = send_cmd(ser, cmd, wait)
             lines = [l.strip() for l in r.split("\n") if l.strip()]
             print("%s: %s" % (desc, lines[0] if lines else "(no response)"))
 

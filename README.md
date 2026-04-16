@@ -106,26 +106,37 @@ pio run -e m5stack-atoms3 -t upload --upload-port COMxx
 
 ## 初回設定 (書込み後 device 毎に 1 回)
 
-シリアルモニタ (115200 baud) で各デバイスに接続し、役割を設定:
+`python/so101_setup.py` を使えば **1 コマンドで役割設定 + 開始** まで完了します。
+Leader と Follower それぞれの USB COM port に対して実行:
 
-### Leader 側
+### ワンショット設定 (推奨)
 
-```
-m0                 ← LEADER モード
-s                  ← 開始
-```
+```bash
+# Leader 側 (COMxx はデバイスの実 COM 番号に置換)
+python python/so101_setup.py --port COMxx --leader --start
 
-### Follower 側
-
-```
-m1                 ← FOLLOWER モード
-s                  ← 開始
+# Follower 側
+python python/so101_setup.py --port COMyy --follower --start
 ```
 
-モード・サーボ ID・WiFi 設定等はすべて NVS 永続化されるため、**次回起動は電源 ON のみで自動動作開始** (`s` 不要)。
-setup() 内で ST_SCANNING に自動遷移し、全サーボ ID 応答確認後に ST_RUNNING へ。
+`--leader --start` は内部で `x` (停止) → `m0` (モード設定) → `s` (開始) の 3 コマンドを順に送信し、
+最後に `?` で STATUS を表示します。`state=RUNNING` になっていれば teleop 稼働中。
 
-手動停止 (`x`) 後の再開時のみ `s` が必要。
+### シリアルモニタで手動設定したい場合
+
+115200 baud でシリアル接続し、以下を打鍵:
+
+```
+m0 (Leader) / m1 (Follower)   ← 役割設定
+s                              ← 開始
+```
+
+### NVS 永続化 — 次回以降は電源 ON だけで自動動作
+
+モード・サーボ ID・WiFi 設定等はすべて NVS に永続化されるため、**書込み後 1 回設定すれば以後は電源 ON のみで自動 RUNNING 復帰** (`s` 不要)。
+起動シーケンス: setup() → NVS load → ST_SCANNING 自動遷移 → 全サーボ ID 応答確認後に ST_RUNNING。
+
+手動停止 (`x` 送信) 後の再開時のみ `--start` (または `s`) が必要。
 
 ## シリアルコマンド一覧
 
