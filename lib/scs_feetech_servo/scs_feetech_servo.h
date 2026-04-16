@@ -12,6 +12,7 @@
 
 #pragma once
 #include <stdint.h>
+#include <stdbool.h>
 #include <string.h>
 
 // ---- SCS Protocol Constants ----
@@ -221,9 +222,23 @@ static inline int scs_scan_ids(uart_port_t uart_num, uint8_t *found_ids, int max
 }
 #endif
 
+// Return true if position is within single-turn range (SCS_POS_MIN .. SCS_POS_MAX = 0..4095).
+// Values outside this range indicate multi-turn mode (EEPROM Min_Angle_Limit = Max_Angle_Limit = 0)
+// where the servo reports a signed 16-bit cumulative position (1 turn = 4096 counts).
+// Writing such values to another servo's Goal Position causes sudden multi-rotation movement
+// (observed symptom: "Joint suddenly spins in reverse"). Application layer should filter
+// with this helper before propagating positions between servos.
+// Root-cause fix: set EEPROM Min=0, Max=4095 via so101_calibrate.py --reset.
+static inline bool scs_is_single_turn_position(int pos) {
+    return pos >= SCS_POS_MIN && pos <= SCS_POS_MAX;
+}
+
 // Extract 16-bit position from READ response
 // Response: [FF FF ID LEN ERR posL posH CHKSUM]
-// Returns position (0-4095) or -1 on error
+// Returns raw position value or -1 on error.
+// NOTE: returned value is the raw 16-bit register value. On multi-turn-mode servos
+// (EEPROM Min=Max=0) this can exceed 4095. Combine with scs_is_single_turn_position()
+// before using as a Goal Position target to prevent multi-rotation runaway.
 static inline int scs_parse_position(const uint8_t *resp, int resp_len) {
     if (resp_len < 8) return -1;
     int idx = -1;
@@ -234,4 +249,70 @@ static inline int scs_parse_position(const uint8_t *resp, int resp_len) {
     uint8_t err = resp[idx + 4];
     if (err != 0) return -1;
     return (int)(resp[idx + 5] | (resp[idx + 6] << 8));
+}
+
+// SYNC_READ packet builder (instruction 0x82)
+// Format: [FF FF FE LEN 0x82 addr rd_len ID1...IDn CHK]
+//   LEN = 4 + n
+//   CHK = ~(0xFE + LEN + 0x82 + addr + rd_len + ID1 + ... + IDn) & 0xFF
+// Returns total packet length (8 + n)
+//
+// Verified on STS3215 (2026-04-16): all 6 servos respond back-to-back
+// with [FF FF ID 04 ERR posL posH CHK] = 8B each = 48B continuous stream.
+static inline int scs_build_sync_read(uint8_t *buf, uint8_t addr, uint8_t rd_len,
+                                       const uint8_t *ids, int n) {
+    buf[0] = 0xFF;
+    buf[1] = 0xFF;
+    buf[2] = 0xFE;                    // broadcast ID
+    buf[3] = (uint8_t)(4 + n);        // LEN
+    buf[4] = 0x82;                    // SYNC_READ instruction
+    buf[5] = addr;
+    buf[6] = rd_len;
+    uint8_t sum = 0xFE + buf[3] + 0x82 + addr + rd_len;
+    for (int i = 0; i < n; i++) {
+        buf[7 + i] = ids[i];
+        sum += ids[i];
+    }
+    buf[7 + n] = (uint8_t)(~sum);
+    return 8 + n;
+}
+
+// Parse SYNC_READ response stream of N x 8B packets.
+// Walks the buffer for [FF FF ID 04 ERR posL posH CHK] packets and extracts
+// positions for matched IDs (in order of expected_ids[]).
+// Returns # of successfully parsed positions.
+//
+// out_positions[i] is set only if expected_ids[i] is found and ERR==0.
+// Indices not found are left untouched.
+// NOTE: out_positions[] receive raw 16-bit register values. Multi-turn-mode
+// servos (EEPROM Min=Max=0) can return values >4095. Combine with
+// scs_is_single_turn_position() before using as Goal Position targets.
+static inline int scs_parse_sync_read_positions(const uint8_t *resp, int resp_len,
+                                                  const uint8_t *expected_ids, int n_expected,
+                                                  uint16_t *out_positions) {
+    int found = 0;
+    int i = 0;
+    while (i + 8 <= resp_len) {
+        // Look for SOF
+        if (resp[i] != 0xFF || resp[i + 1] != 0xFF) {
+            i++;
+            continue;
+        }
+        // Check it's a valid 8B response: LEN=4 (means 4 bytes after LEN: ERR posL posH CHK)
+        uint8_t id = resp[i + 2];
+        uint8_t len = resp[i + 3];
+        if (len != 4) { i++; continue; }
+        uint8_t err = resp[i + 4];
+        if (err != 0) { i += 8; continue; }
+        // Match against expected_ids
+        for (int k = 0; k < n_expected; k++) {
+            if (expected_ids[k] == id) {
+                out_positions[k] = (uint16_t)(resp[i + 5] | (resp[i + 6] << 8));
+                found++;
+                break;
+            }
+        }
+        i += 8;
+    }
+    return found;
 }

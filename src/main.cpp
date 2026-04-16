@@ -345,6 +345,11 @@ static void leader_read_and_send() {
 
         int resp_len = scs_recv_response(UART_NUM, resp, sizeof(resp), 3000);
         int pos = scs_parse_position(resp, resp_len);
+        // Calibration-aware setup: each servo has Phase bit4=0 (force 0-4095
+        // wrap, no sign-magnitude overflow) AND Homing_Offset places the
+        // joint's mechanical middle at Pres=2047, so Present_Position stays
+        // strictly within [range_min, range_max] during normal motion.
+        // See so101_calibrate.py --configure. No additional range filter here.
         if (pos >= 0) {
             leader_positions[i] = (uint16_t)pos;
             leader_read_ok++;
@@ -388,6 +393,11 @@ static void bridge_leader_read_and_write() {
 
         int resp_len = scs_recv_response(UART_LEADER, resp, sizeof(resp), 3000);
         int pos = scs_parse_position(resp, resp_len);
+        // Calibration-aware setup: each servo has Phase bit4=0 (force 0-4095
+        // wrap, no sign-magnitude overflow) AND Homing_Offset places the
+        // joint's mechanical middle at Pres=2047, so Present_Position stays
+        // strictly within [range_min, range_max] during normal motion.
+        // See so101_calibrate.py --configure. No additional range filter here.
         if (pos >= 0) {
             leader_positions[i] = (uint16_t)pos;
             leader_read_ok++;

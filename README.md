@@ -213,13 +213,30 @@ PC からの設定・テストスクリプトは [python/](python/) を参照。
 
 詳細: [python/README.md](python/README.md)
 
+## キャリブレーション基本姿勢 (重要)
+
+`so101_calibrate.py` 実行中の Step 2 で「**各関節を可動域の MIDDLE に置いてください**」
+と指示されますが、この **「MIDDLE」は関節の物理的 (機械的) 可動域の真ん中** であり、
+**見た目がまっすぐな姿勢ではありません**。
+
+![Calibration base pose](image/s0101_calibration_position.png)
+
+上図の姿勢で両腕を配置してから Step 2 の ENTER を押してください。
+中央から外れた位置で ENTER すると、Homing_Offset が不正になり、teleop 時に
+Present_Position が 0/4095 境界を wrap して **サーボが突然反対方向に大きく回転する**
+現象が発生します。
+
+**Leader 腕と Follower 腕は同一姿勢** に揃えてからキャリブレーションしてください。
+両腕で「MIDDLE ポーズ = Present_Position 2047」が同じ物理姿勢を指すようになり、
+teleop で 1:1 追従が成立します。
+
+キャリブレーション手順詳細とトラブルシュートは [python/README.md](python/README.md) 参照。
+
+キャリブレーションの原理 (Feetech サーボ内部処理 / LeRobot 方式 / SO101_leader_follower FW の pass-through 設計の差) は [docs/202604162200_calibration-method-comparison.md](docs/202604162200_calibration-method-comparison.md) を参照。
+
 ## 関連プロジェクト
 
-- [RS-485_wireless](https://github.com/uecken/RS-485_wireless) -- 元リポジトリ (WiFi UDP 版、RS-485 bridge 等)
-
-## License
-
-[MIT License](LICENSE)
+- [rs485_espnow_bridge](https://github.com/uecken/RS-485_wireless/tree/master/rs485_espnow_bridge) -- RS-485 ↔ ESP-NOW 双方向透過ブリッジ
 
 ---
 

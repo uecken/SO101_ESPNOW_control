@@ -40,8 +40,9 @@ WRIST_ROLL_ID = 5  # full rotation, skip range recording
 # STS3215 register addresses
 ADDR_MIN_POSITION    = 0x09  # 2B EEPROM
 ADDR_MAX_POSITION    = 0x0B  # 2B EEPROM
+ADDR_PHASE           = 0x12  # 1B EEPROM (bit4 = angle feedback mode; LeRobot clears it)
 ADDR_MAX_TORQUE      = 0x10  # 2B EEPROM
-ADDR_HOMING_OFFSET   = 0x1F  # 2B EEPROM (signed)
+ADDR_HOMING_OFFSET   = 0x1F  # 2B EEPROM (signed, two's complement)
 ADDR_OPERATING_MODE  = 0x21  # 1B
 ADDR_TORQUE_ENABLE   = 0x28  # 1B
 ADDR_ACCELERATION    = 0x29  # 1B
@@ -120,9 +121,34 @@ def disable_torque(ser, sid):
     time.sleep(0.01)
 
 
+def configure_phase(ser, sid):
+    """Clear bit 4 (0x10) of the Phase register (0x12).
+    Matches LeRobot's configure_motors(). Without this, STS3215 units shipped
+    with Phase bit 4 = 1 report Present_Position in sign-magnitude encoding
+    (bit15 = sign) when the shaft crosses raw=0, producing values like 32826
+    (= -58 sign-mag) instead of a clean 0-4095 wrap. Clearing bit 4 forces all
+    units into the [0, 4095] wrap behavior so that Present_Position is always
+    an unsigned 12-bit value — making the teleop datapath consistent.
+    """
+    phase = read_byte(ser, sid, ADDR_PHASE)
+    if phase is None:
+        return None
+    if phase & 0x10:
+        write_byte(ser, sid, ADDR_PHASE, phase & ~0x10)
+    return phase
+
+
 def reset_calibration(ser, sid):
-    """Reset to factory-like state: full range, no homing offset."""
+    """Reset to factory-like single-turn state.
+    Writes Operating_Mode=0 (Position/Servo mode) explicitly to prevent the
+    servo from staying in Step Servo mode (0x21=3) or Wheel mode (0x21=1).
+    Also clears Phase register bit 4 via configure_phase() so Present_Position
+    stays in [0, 4095] range instead of spilling into sign-magnitude negative.
+    Matches the LeRobot / Feetech standard reset+configure sequence.
+    """
     disable_torque(ser, sid)
+    configure_phase(ser, sid)                      # Phase bit 4 -> 0 (consistent wrap)
+    write_byte(ser, sid, ADDR_OPERATING_MODE, 0)   # Position (single-turn) mode
     write_sword(ser, sid, ADDR_HOMING_OFFSET, 0)
     write_word(ser, sid, ADDR_MIN_POSITION, 0)
     write_word(ser, sid, ADDR_MAX_POSITION, 4095)
@@ -134,11 +160,14 @@ def reset_calibration(ser, sid):
 
 def read_all_calibration(ser):
     print()
-    fmt = "%3s  %-15s %6s %6s %6s %7s %5s %6s %6s %6s"
-    print(fmt % ("ID", "Name", "Min", "Max", "Range", "Offset", "Lock", "Pos", "Accel", "MaxAcc"))
-    print("-" * 78)
+    mode_names = {0: "Pos", 1: "Wheel", 2: "PWM", 3: "Step*"}  # * = multi-turn risk
+    fmt = "%3s  %-15s %4s %5s %6s %6s %6s %7s %5s %6s %6s %6s"
+    print(fmt % ("ID", "Name", "Mode", "Phase", "Min", "Max", "Range", "Offset", "Lock", "Pos", "Accel", "MaxAcc"))
+    print("-" * 92)
     for sid in SERVO_IDS:
         name = SERVO_NAMES.get(sid, "?")
+        op_mode = read_byte(ser, sid, ADDR_OPERATING_MODE)
+        phase = read_byte(ser, sid, ADDR_PHASE)
         mn = read_word(ser, sid, ADDR_MIN_POSITION)
         mx = read_word(ser, sid, ADDR_MAX_POSITION)
         offset = read_sword(ser, sid, ADDR_HOMING_OFFSET)
@@ -147,9 +176,17 @@ def read_all_calibration(ser):
         accel = read_byte(ser, sid, ADDR_ACCELERATION)
         max_accel = read_byte(ser, sid, ADDR_MAX_ACCELERATION)
         rng = (mx - mn) if mn is not None and mx is not None else -1
-        flag = " *** NARROW" if 0 <= rng < 100 else ""
-        print(("%3d  %-15s %6s %6s %6s %7s %5s %6s %6s %6s%s") % (
+        flags = ""
+        if 0 <= rng < 100: flags += " ***NARROW"
+        if op_mode is not None and op_mode != 0: flags += " ***NOT_POSITION_MODE"
+        if mn == 0 and mx == 0: flags += " ***MULTI_TURN"
+        if phase is not None and (phase & 0x10): flags += " ***PHASE_BIT4_SET"  # sign-mag mode
+        mode_str = mode_names.get(op_mode, "?") if op_mode is not None else "ERR"
+        phase_str = ("0x%02X" % phase) if phase is not None else "ERR"
+        print(("%3d  %-15s %4s %5s %6s %6s %6s %7s %5s %6s %6s %6s%s") % (
             sid, name,
+            mode_str,
+            phase_str,
             mn if mn is not None else "ERR",
             mx if mx is not None else "ERR",
             rng if rng >= 0 else "ERR",
@@ -158,7 +195,7 @@ def read_all_calibration(ser):
             pos if pos is not None else "ERR",
             accel if accel is not None else "ERR",
             max_accel if max_accel is not None else "ERR",
-            flag))
+            flags))
     print()
 
 
@@ -167,11 +204,33 @@ def read_all_calibration(ser):
 # ============================================================================
 
 def reset_all(ser):
-    print("Resetting all servos to full range...")
+    print("Resetting all servos to single-turn Position mode (Phase bit4=0)...")
     for sid in SERVO_IDS:
         reset_calibration(ser, sid)
         name = SERVO_NAMES.get(sid, "?")
-        print("  ID=%d (%s): Min=0, Max=4095, Offset=0" % (sid, name))
+        print("  ID=%d (%s): Phase_bit4=0, OpMode=0(Pos), Min=0, Max=4095, Offset=0" % (sid, name))
+    print("Done.\n")
+
+
+def configure_phase_all(ser):
+    """Clear Phase bit4 on all servos WITHOUT touching Min/Max/Offset.
+    Use this to fix Phase without losing calibration data.
+    """
+    print("Configuring Phase register on all servos (clearing bit 4)...")
+    for sid in SERVO_IDS:
+        # Phase bit requires Torque OFF + Lock=0 before write (EEPROM).
+        disable_torque(ser, sid)
+        prev = configure_phase(ser, sid)
+        name = SERVO_NAMES.get(sid, "?")
+        if prev is None:
+            print("  ID=%d (%s): read fail" % (sid, name))
+        else:
+            new = read_byte(ser, sid, ADDR_PHASE)
+            changed = "CHANGED" if (prev & 0x10) and not (new & 0x10 if new is not None else True) else "unchanged"
+            print("  ID=%d (%-15s) Phase: 0x%02X -> 0x%02X  [%s]" %
+                  (sid, name, prev, new if new is not None else 0, changed))
+        # Re-lock EEPROM (nice-to-have; does nothing functionally for Phase)
+        write_byte(ser, sid, ADDR_LOCK, 1)
     print("Done.\n")
 
 
@@ -188,16 +247,21 @@ def calibrate(ser, save_path=None):
     # --- Step 1: Reset all ---
     print("[Step 1/4] Reset & prepare")
     for sid in SERVO_IDS:
-        disable_torque(ser, sid)
-        write_byte(ser, sid, ADDR_OPERATING_MODE, 0)  # POSITION mode
-        reset_calibration(ser, sid)
-    print("  All servos: Torque OFF, Mode=POSITION, Min=0, Max=4095, Offset=0")
+        reset_calibration(ser, sid)   # torque off, Phase bit4=0, Mode=0, Offset=0, Min=0, Max=4095
+    print("  All servos: Torque OFF, Phase bit4=0, Mode=POSITION, Min=0, Max=4095, Offset=0")
     print()
 
     # --- Step 2: Homing offset ---
     print("[Step 2/4] Set homing offset")
-    print("  Move ALL joints to the MIDDLE of their range of motion.")
-    print("  (Arm should be in a neutral, centered pose)")
+    print("  Move ALL joints to the MIDDLE of their MECHANICAL range.")
+    print("  The 'middle' means HALFWAY between each joint's two physical stops,")
+    print("  NOT the pose that visually looks straight.")
+    print()
+    print("  Reference posture: see image/s0101_calibration_position.png")
+    print("    (path: SO101_leader_follower/image/s0101_calibration_position.png)")
+    print()
+    print("  If placed off-center here, Homing_Offset will be wrong and")
+    print("  Present_Position may wrap through 0/4095 during teleop (= sudden motion).")
     print()
     input("  Press ENTER when ready...")
     print()
@@ -206,9 +270,19 @@ def calibrate(ser, save_path=None):
     print("  %-15s %6s %7s" % ("Name", "Pos", "Offset"))
     print("  " + "-" * 32)
     for sid in SERVO_IDS:
-        pos = read_word(ser, sid, ADDR_PRESENT_POSITION)
+        # Read up to 3 times to avoid a transient out-of-range reading being
+        # captured as the middle-pose position and burned into a huge Offset.
+        pos = None
+        for _ in range(3):
+            p = read_word(ser, sid, ADDR_PRESENT_POSITION)
+            if p is not None and 0 <= p <= 4095:
+                pos = p
+                break
+            time.sleep(0.02)
         if pos is None:
-            print("  ERROR: Cannot read ID=%d. Check connection." % sid)
+            print("  ERROR: Cannot read valid Pos for ID=%d (got out-of-range or no response)." % sid)
+            print("         The servo may still be in a wrapped state from previous EEPROM values.")
+            print("         Re-run with --reset first to fully clear the EEPROM, then retry calibration.")
             return
         offset = pos - 2047
         offsets[sid] = offset
@@ -267,7 +341,11 @@ def calibrate(ser, save_path=None):
                 current_pos[sid] = read_word(ser, sid, ADDR_PRESENT_POSITION) or 0
                 continue
             pos = read_word(ser, sid, ADDR_PRESENT_POSITION)
-            if pos is not None:
+            # Filter out-of-range transient reads (>4095 or <0).
+            # These occur when Homing_Offset causes 16-bit overflow, or if a
+            # servo briefly reports a multi-turn value. Writing such a value
+            # as Max_Position_Limit would bake a corrupted range into EEPROM.
+            if pos is not None and 0 <= pos <= 4095:
                 current_pos[sid] = pos
                 if pos < range_min[sid]:
                     range_min[sid] = pos
@@ -321,8 +399,8 @@ def calibrate(ser, save_path=None):
         print("  Consider re-running calibration and moving those joints fully.")
 
     print()
-    confirm = input("  Write these values to servo EEPROM? [y/N]: ").strip().lower()
-    if confirm != "y":
+    confirm = input("  Write these values to servo EEPROM? [Y/n]: ").strip().lower()
+    if confirm not in ("", "y", "yes"):
         print("  Cancelled.")
         return
 
@@ -349,7 +427,9 @@ def calibrate(ser, save_path=None):
 
     # Save JSON
     if save_path:
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        dir_name = os.path.dirname(save_path)
+        if dir_name:  # only mkdir if path has a directory component (e.g. "sub/cal.json")
+            os.makedirs(dir_name, exist_ok=True)
         with open(save_path, "w") as f:
             json.dump(calibration, f, indent=2)
         print()
@@ -375,7 +455,8 @@ def main():
 Examples:
   python so101_calibrate.py --port COM24                   # full calibration
   python so101_calibrate.py --port COM24 --read-only       # show current values
-  python so101_calibrate.py --port COM24 --reset           # reset to 0-4095
+  python so101_calibrate.py --port COM24 --reset           # reset to 0-4095 + Phase bit4=0
+  python so101_calibrate.py --port COM24 --configure       # clear Phase bit4 only (keep calibration)
   python so101_calibrate.py --port COM24 --save cal.json   # calibrate + save JSON
 """)
     parser.add_argument("--port", type=str, required=True,
@@ -386,6 +467,8 @@ Examples:
                         help="Just show current calibration values")
     parser.add_argument("--reset", action="store_true",
                         help="Reset all servos to full range (0-4095)")
+    parser.add_argument("--configure", action="store_true",
+                        help="Clear Phase register bit 4 only (preserves Min/Max/Offset)")
     parser.add_argument("--save", type=str, default=None,
                         help="Save calibration JSON to this path")
     args = parser.parse_args()
@@ -401,6 +484,9 @@ Examples:
             read_all_calibration(ser)
         elif args.reset:
             reset_all(ser)
+            read_all_calibration(ser)
+        elif args.configure:
+            configure_phase_all(ser)
             read_all_calibration(ser)
         else:
             calibrate(ser, save_path=args.save)
