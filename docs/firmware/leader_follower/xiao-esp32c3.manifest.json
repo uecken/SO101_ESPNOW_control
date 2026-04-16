@@ -1,0 +1,15 @@
+{
+  "name": "SO-101 Leader-Follower (XIAO ESP32-C3)",
+  "version": "1.0.0",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32-C3",
+      "parts": [
+        { "path": "xiao-esp32c3/bootloader.bin", "offset": 0 },
+        { "path": "xiao-esp32c3/partitions.bin", "offset": 32768 },
+        { "path": "xiao-esp32c3/firmware.bin",   "offset": 65536 }
+      ]
+    }
+  ]
+}

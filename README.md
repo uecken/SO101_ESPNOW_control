@@ -104,6 +104,26 @@ pio run -e m5stack-atoms3 -t upload --upload-port COMxx
 
 **`s` コマンドは不要** (起動時に自動で SCANNING → RUNNING)。サーボ未接続時は SCANNING で待機。
 
+## ファームウェア書込み
+
+### 🌐 Web ブラウザから (推奨 / 初心者向け)
+
+PlatformIO 不要。**Chrome / Edge デスクトップ版** から以下の URL を開き、ボタンを押すだけ:
+
+> ### **[→ Web Serial Installer](https://uecken.github.io/SO101_ESPNOW_control/)**
+
+対応 MCU: **M5StickC / M5Stack AtomS3 / XIAO ESP32-C3 / XIAO ESP32-S3**。
+USB 接続した MCU をブラウザ上の「書込む」ボタンで即座にフラッシュします。
+
+### PlatformIO からビルド (開発者向け)
+
+```bash
+pio run -e xiao-esp32c3-scs-recognize -t upload --upload-port COMxx
+# または env:m5stick-c / m5stack-atoms3 / xiao-esp32s3
+```
+
+詳細は `platformio.ini` の各 `[env:*]` を参照。
+
 ## 初回設定 (書込み後 device 毎に 1 回)
 
 `python/so101_setup.py` を使えば **1 コマンドで役割設定 + 開始** まで完了します。

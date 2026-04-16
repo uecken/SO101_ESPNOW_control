@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SO-101 Leader-Follower Web Installer</title>
+  <link rel="stylesheet" href="style.css">
+  <script type="module"
+          src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+</head>
+<body>
+  <header>
+    <h1>🦾 SO-101 Leader-Follower</h1>
+    <p class="lead">Web ブラウザから直接ファームウェアを書込めます。PlatformIO 不要。</p>
+  </header>
+
+  <section class="requirements">
+    <h2>準備</h2>
+    <ol>
+      <li><strong>Chrome / Edge (デスクトップ版)</strong> で本ページを開く
+        <ul>
+          <li>❌ Safari / Firefox / モバイルブラウザは Web Serial API 非対応のため書込み不可</li>
+        </ul>
+      </li>
+      <li>書込みたい MCU を PC に USB 接続</li>
+      <li>該当 board の <em>書込む</em> ボタンを押す → シリアル port 選択 → 自動書込み</li>
+    </ol>
+  </section>
+
+  <section class="boards">
+    <h2>ボード選択</h2>
+
+    <article class="board-card">
+      <h3>M5StickC <span class="chip">ESP32</span></h3>
+      <p>基板裏に TX=G32 / RX=G33 / GND / 5V を配線 (サーボバス側)。</p>
+      <esp-web-install-button manifest="firmware/leader_follower/m5stick-c.manifest.json">
+        <button slot="activate" class="install-btn">M5StickC に書込む</button>
+        <span slot="unsupported">⚠ このブラウザは Web Serial 非対応です。Chrome / Edge を使用してください。</span>
+        <span slot="not-allowed">⚠ HTTPS 接続が必要です。</span>
+      </esp-web-install-button>
+    </article>
+
+    <article class="board-card">
+      <h3>M5Stack AtomS3 <span class="chip">ESP32-S3</span></h3>
+      <p>TX=G2 / RX=G1 / GND / 5V をサーボバスへ。</p>
+      <p class="warn">
+        <strong>⚠ 書込み前に boot mode に入れてください</strong>:<br>
+        AtomS3 側面のボタンを <strong>押したまま USB を PC に接続</strong> → 接続後ボタンを離す。<br>
+        (Arduino v2 + native USB-CDC の制約で auto-reset が効かないため)
+      </p>
+      <esp-web-install-button manifest="firmware/leader_follower/m5stack-atoms3.manifest.json">
+        <button slot="activate" class="install-btn">AtomS3 に書込む</button>
+        <span slot="unsupported">⚠ Chrome / Edge を使用してください。</span>
+        <span slot="not-allowed">⚠ HTTPS 接続が必要です。</span>
+      </esp-web-install-button>
+    </article>
+
+    <article class="board-card">
+      <h3>Seeed XIAO ESP32-C3 <span class="chip">ESP32-C3</span></h3>
+      <p>TX=D6 (GPIO21) / RX=D7 (GPIO20) / GND / 5V をサーボバスへ。<br>Waveshare サーボドライバの場合 3-pin ケーブル直結で OK。</p>
+      <esp-web-install-button manifest="firmware/leader_follower/xiao-esp32c3.manifest.json">
+        <button slot="activate" class="install-btn">XIAO ESP32-C3 に書込む</button>
+        <span slot="unsupported">⚠ Chrome / Edge を使用してください。</span>
+        <span slot="not-allowed">⚠ HTTPS 接続が必要です。</span>
+      </esp-web-install-button>
+    </article>
+
+    <article class="board-card">
+      <h3>Seeed XIAO ESP32-S3 <span class="chip">ESP32-S3</span></h3>
+      <p>TX=GPIO43 / RX=GPIO44 / GND / 5V をサーボバスへ。</p>
+      <esp-web-install-button manifest="firmware/leader_follower/xiao-esp32s3.manifest.json">
+        <button slot="activate" class="install-btn">XIAO ESP32-S3 に書込む</button>
+        <span slot="unsupported">⚠ Chrome / Edge を使用してください。</span>
+        <span slot="not-allowed">⚠ HTTPS 接続が必要です。</span>
+      </esp-web-install-button>
+    </article>
+  </section>
+
+  <section class="next-steps">
+    <h2>書込み後の初回設定 (device 毎に 1 回)</h2>
+    <p>Leader と Follower それぞれに役割を設定 + 開始:</p>
+    <pre><code>git clone https://github.com/uecken/SO101_ESPNOW_control
+cd SO101_ESPNOW_control
+pip install pyserial
+
+# Leader (COMxx は USB 接続ポート番号)
+python python/so101_setup.py --port COMxx --leader --start
+
+# Follower
+python python/so101_setup.py --port COMyy --follower --start</code></pre>
+    <p>
+      モード・サーボ ID・WiFi 設定等は <strong>NVS 永続化</strong>されるため、次回以降は
+      電源 ON のみで自動 <code>RUNNING</code> 復帰します (上記コマンドは書込み後 1 回だけ)。
+    </p>
+    <p>
+      サーボのキャリブレーションは別途 <code>python/so101_calibrate.py --reset --port COMxx</code>。
+      詳細は <a href="https://github.com/uecken/SO101_ESPNOW_control#readme">README</a> 参照。
+    </p>
+  </section>
+
+  <section class="links">
+    <h2>リンク</h2>
+    <ul>
+      <li><a href="https://github.com/uecken/SO101_ESPNOW_control">GitHub repo</a></li>
+      <li><a href="202604162200_calibration-method-comparison.md">キャリブレーション方式比較 (技術資料)</a></li>
+      <li><a href="https://esphome.github.io/esp-web-tools/">esp-web-tools (使用中ライブラリ)</a></li>
+    </ul>
+  </section>
+
+  <footer>
+    <p>Firmware: SO101_leader_follower v1.0 (multi-turn fix + mechanical-middle calibration)</p>
+    <p>Installer powered by <a href="https://esphome.github.io/esp-web-tools/">esp-web-tools</a></p>
+  </footer>
+</body>
+</html>

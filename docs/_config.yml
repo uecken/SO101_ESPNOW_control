@@ -1,0 +1,26 @@
+# GitHub Pages / Jekyll config for the SO-101 Web Serial installer.
+# We disable Jekyll's default processing so that .manifest.json files and
+# firmware .bin blobs are served as-is (application/json and
+# application/octet-stream) instead of being run through Liquid templating.
+#
+# Keep this minimal — we are NOT building a Jekyll site, just hosting
+# index.html + static assets.
+
+title: SO-101 Leader-Follower Installer
+
+# Include the firmware/ directory (Jekyll ignores dirs starting with _ by
+# default; firmware/ does not start with _ so it's already included, but
+# we keep this explicit for clarity).
+include:
+  - firmware
+
+# Don't process markdown/html with Liquid templating in firmware/.
+# (Keeps bin/json files pristine.)
+defaults:
+  - scope:
+      path: "firmware"
+    values:
+      sitemap: false
+
+# Minimal theme (GitHub Pages requires a theme entry)
+theme: jekyll-theme-minimal

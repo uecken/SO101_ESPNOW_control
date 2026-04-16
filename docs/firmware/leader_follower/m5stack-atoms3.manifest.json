@@ -1,0 +1,15 @@
+{
+  "name": "SO-101 Leader-Follower (M5Stack AtomS3)",
+  "version": "1.0.0",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32-S3",
+      "parts": [
+        { "path": "m5stack-atoms3/bootloader.bin", "offset": 0 },
+        { "path": "m5stack-atoms3/partitions.bin", "offset": 32768 },
+        { "path": "m5stack-atoms3/firmware.bin",   "offset": 65536 }
+      ]
+    }
+  ]
+}

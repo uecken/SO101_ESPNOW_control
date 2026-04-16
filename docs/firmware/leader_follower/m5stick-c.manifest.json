@@ -1,0 +1,15 @@
+{
+  "name": "SO-101 Leader-Follower (M5StickC)",
+  "version": "1.0.0",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32",
+      "parts": [
+        { "path": "m5stick-c/bootloader.bin", "offset": 4096 },
+        { "path": "m5stick-c/partitions.bin", "offset": 32768 },
+        { "path": "m5stick-c/firmware.bin",   "offset": 65536 }
+      ]
+    }
+  ]
+}
